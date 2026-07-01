@@ -17,10 +17,12 @@ export default async function handler(req, res) {
 
     try {
         let channelId = null;
-        const cleanHandle = handle.replace('@', '').trim();
+        
+        // Ensure the handle has an '@' prepended (YouTube's API prefers this for strict special character handles)
+        const formattedHandle = handle.startsWith('@') ? handle.trim() : `@${handle.trim()}`;
 
-        // Method A: Attempt strict handle resolution
-        const channelUrl = `https://www.googleapis.com/youtube/v3/channels?key=${API_KEY}&forHandle=${cleanHandle}&part=id`;
+        // Method A: Strict handle resolution with @ symbol included
+        const channelUrl = `https://www.googleapis.com/youtube/v3/channels?key=${API_KEY}&forHandle=${encodeURIComponent(formattedHandle)}&part=id`;
         const channelRes = await fetch(channelUrl);
         const channelData = await channelRes.json();
 
@@ -28,7 +30,7 @@ export default async function handler(req, res) {
             channelId = channelData.items[0].id;
         } else {
             // Method B Fallback: Plain keyword search to locate the channel ID dynamically
-            const fallbackSearchUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&q=${encodeURIComponent(cleanHandle)}&type=channel&part=id&maxResults=1`;
+            const fallbackSearchUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&q=${encodeURIComponent(handle)}&type=channel&part=id&maxResults=1`;
             const fallbackRes = await fetch(fallbackSearchUrl);
             const fallbackData = await fallbackRes.json();
 
@@ -37,17 +39,20 @@ export default async function handler(req, res) {
             }
         }
 
-        // If both methods fail, return the error safely
+        // If both lookups fail, let's see if YouTube API returned an explicit error (like Quota Exceeded)
         if (!channelId) {
-            return res.status(404).json({ error: 'Channel not found. Please double-check the handle or spelling.' });
+            if (channelData.error) {
+                return res.status(400).json({ error: `YouTube API Error: ${channelData.error.message}` });
+            }
+            return res.status(404).json({ error: 'Channel not found. Please double-check the handle spelling.' });
         }
 
-        // 2. Fetch latest videos from the resolved channel ID
+        // 2. Fetch latest 50 videos from the resolved channel ID
         const videosUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${channelId}&part=id,snippet&order=date&maxResults=50&type=video`;
         const videosRes = await fetch(videosUrl);
         const videosData = await videosRes.json();
 
-        if (!videosData.items) {
+        if (!videosData.items || videosData.items.length === 0) {
             return res.status(200).json({ longVideos: [], shortVideos: [] });
         }
 

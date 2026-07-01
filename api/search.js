@@ -36,7 +36,6 @@ export default async function handler(req, res) {
             if (fallbackData.items && fallbackData.items.length > 0) {
                 channelId = fallbackData.items[0].id.channelId;
                 
-                // Get the uploads playlist for the fallback channel ID
                 const fallbackChannelUrl = `https://www.googleapis.com/youtube/v3/channels?key=${API_KEY}&id=${channelId}&part=contentDetails`;
                 const fbChanRes = await fetch(fallbackChannelUrl);
                 const fbChanData = await fbChanRes.json();
@@ -50,7 +49,7 @@ export default async function handler(req, res) {
             return res.status(404).json({ error: 'Channel or uploads index not found.' });
         }
 
-        // 2. Fetch the latest 50 videos directly out of the Master Uploads Playlist (Guarantees comprehensive cataloging)
+        // 2. Fetch the latest 50 videos directly out of the Master Uploads Playlist
         const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${uploadsPlaylistId}&part=contentDetails,snippet&maxResults=50`;
         const playlistRes = await fetch(playlistUrl);
         const playlistData = await playlistRes.json();
@@ -61,7 +60,7 @@ export default async function handler(req, res) {
 
         const videoIds = playlistData.items.map(item => item.contentDetails.videoId).join(',');
 
-        // 3. Request statistical details (views & duration metrics) directly for these 50 videos
+        // 3. Request statistical details (views & duration metrics)
         const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${API_KEY}&id=${videoIds}&part=contentDetails,snippet,statistics`;
         const detailsRes = await fetch(detailsUrl);
         const detailsData = await detailsRes.json();
@@ -83,8 +82,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 4. Sort the compiled list locally using math array filtering on raw views data descending
-        // This guarantees that the genuine top-viewed items float to the top
+        // 4. Sort and slice top 3
         const sortedLongVideos = allVideos
             .filter(v => !v.isShort)
             .sort((a, b) => b.views - a.views)

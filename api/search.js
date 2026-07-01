@@ -17,9 +17,12 @@ export default async function handler(req, res) {
     try {
         let channelId = null;
         let uploadsPlaylistId = null;
-        const formattedHandle = handle.startsWith('@') ? handle.trim() : `@${handle.trim()}`;
+        
+        // Clean and prepare versions for both strict handle matching and search fallbacks
+        const cleanHandle = handle.replace('@', '').trim();
+        const formattedHandle = `@${cleanHandle}`;
 
-        // 1. Fetch channel details to get the master Uploads Playlist ID
+        // Method A: Strict handle resolution with formatted handle
         const channelUrl = `https://www.googleapis.com/youtube/v3/channels?key=${API_KEY}&forHandle=${encodeURIComponent(formattedHandle)}&part=id,contentDetails`;
         const channelRes = await fetch(channelUrl);
         const channelData = await channelRes.json();
@@ -28,14 +31,15 @@ export default async function handler(req, res) {
             channelId = channelData.items[0].id;
             uploadsPlaylistId = channelData.items[0].contentDetails.relatedPlaylists.uploads;
         } else {
-            // Fallback Search to get Channel ID if handle resolution fails
-            const fallbackSearchUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&q=${encodeURIComponent(handle)}&type=channel&part=id&maxResults=1`;
+            // Method B Fallback: Plain keyword search to locate channel ID dynamically (Fixes Case-Sensitivity bugs)
+            const fallbackSearchUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&q=${encodeURIComponent(cleanHandle)}&type=channel&part=id&maxResults=1`;
             const fallbackRes = await fetch(fallbackSearchUrl);
             const fallbackData = await fallbackRes.json();
 
             if (fallbackData.items && fallbackData.items.length > 0) {
                 channelId = fallbackData.items[0].id.channelId;
                 
+                // Get the uploads playlist for the fallback channel ID
                 const fallbackChannelUrl = `https://www.googleapis.com/youtube/v3/channels?key=${API_KEY}&id=${channelId}&part=contentDetails`;
                 const fbChanRes = await fetch(fallbackChannelUrl);
                 const fbChanData = await fbChanRes.json();
@@ -45,6 +49,7 @@ export default async function handler(req, res) {
             }
         }
 
+        // If the main lookups missed but we found a valid playlist, continue
         if (!uploadsPlaylistId) {
             return res.status(404).json({ error: 'Channel or uploads index not found.' });
         }

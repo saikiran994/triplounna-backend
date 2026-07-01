@@ -17,8 +17,6 @@ export default async function handler(req, res) {
 
     try {
         let channelId = null;
-        
-        // Ensure the handle has an '@' prepended (YouTube's API prefers this for strict special character handles)
         const formattedHandle = handle.startsWith('@') ? handle.trim() : `@${handle.trim()}`;
 
         // Method A: Strict handle resolution with @ symbol included
@@ -39,7 +37,6 @@ export default async function handler(req, res) {
             }
         }
 
-        // If both lookups fail, let's see if YouTube API returned an explicit error (like Quota Exceeded)
         if (!channelId) {
             if (channelData.error) {
                 return res.status(400).json({ error: `YouTube API Error: ${channelData.error.message}` });
@@ -47,8 +44,8 @@ export default async function handler(req, res) {
             return res.status(404).json({ error: 'Channel not found. Please double-check the handle spelling.' });
         }
 
-        // 2. Fetch latest 50 videos from the resolved channel ID
-        const videosUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${channelId}&part=id,snippet&order=date&maxResults=50&type=video`;
+        // CHANGED: order=viewCount pulls the most popular videos first instead of order=date
+        const videosUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${channelId}&part=id,snippet&order=viewCount&maxResults=50&type=video`;
         const videosRes = await fetch(videosUrl);
         const videosData = await videosRes.json();
 
@@ -56,7 +53,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ longVideos: [], shortVideos: [] });
         }
 
-        // 3. Gather full detail definitions to separate long vs short format aspect ratios
+        // Gather full detail definitions to separate long vs short format aspect ratios
         const videoIds = videosData.items.map(item => item.id.videoId).filter(id => id).join(',');
         
         if (!videoIds) {
@@ -72,7 +69,7 @@ export default async function handler(req, res) {
 
         if (detailsData.items) {
             detailsData.items.forEach(video => {
-                const duration = video.contentDetails.duration; // e.g., PT5M23S or PT34S
+                const duration = video.contentDetails.duration; 
                 const isShort = !duration.includes('M') && !duration.includes('H'); 
 
                 const videoPayload = {
